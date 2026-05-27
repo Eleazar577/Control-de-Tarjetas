@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Tarjetas Familiar</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f8;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-muted: #7f8c8d;
+            --primary: #2e7d32;
+            --primary-light: #e8f5e9;
+            --accent: #1976d2;
+            --accent-light: #e3f2fd;
+            --danger: #c62828;
+            --danger-light: #ffebee;
+            --border-color: #dcdde1;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); padding: 20px; }
+
+        /* Pantalla de Bloqueo por Contraseña */
+        #lock-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #2c3e50; display: flex; justify-content: center;
+            align-items: center; z-index: 9999; color: white; flex-direction: column;
+        }
+        .login-box { background: white; padding: 30px; border-radius: 8px; text-align: center; color: #2c3e50; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .login-box input { padding: 10px; width: 100%; margin: 15px 0; border: 1px solid var(--border-color); border-radius: 4px; text-align: center; font-size: 16px; }
+        
+        /* Contenedor Principal */
+        #main-content { display: none; max-width: 1200px; margin: 0 auto; }
+
+        header { margin-bottom: 25px; border-left: 5px solid var(--primary); padding-left: 15px; }
+        
+        /* Sistema de Pestañas (Tabs) */
+        .tabs-container { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; }
+        .tab-btn { padding: 10px 20px; font-size: 14px; font-weight: bold; background: #e0e0e0; color: var(--text-main); border-radius: 6px 6px 0 0; cursor: pointer; border: none; }
+        .tab-btn.active { background: var(--accent); color: white; }
+
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* Configuración de Propietarios */
+        .config-section { background: #eaedf1; padding: 12px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .config-section input { padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; width: 120px; text-align: center; font-weight: bold; }
+
+        /* Dashboard KPI */
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .kpi-card { background: var(--card-bg); padding: 15px 20px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .kpi-card h3 { font-size: 12px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+        .kpi-card .value { font-size: 22px; font-weight: bold; }
+        .kpi-card .value.pending { color: var(--danger); }
+
+        /* Formulario */
+        .form-section { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 25px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 12px; margin-bottom: 4px; color: var(--text-muted); }
+        .form-group input, .form-group select { padding: 8px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 4px; }
+
+        button { padding: 9px 15px; font-size: 13px; font-weight: bold; border-radius: 4px; cursor: pointer; border: none; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: #eceff1; color: var(--text-main); border: 1px solid var(--border-color); }
+        .btn-next-month { background: #ff9800; color: white; margin-left: 10px; }
+        .btn-next-month:hover { background: #e65100; }
+
+        /* Tabla */
+        .table-container { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f8f9fa; padding: 12px 10px; border-bottom: 2px solid var(--border-color); text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #edf0f2; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+        .badge-paid { background: var(--primary-light); color: var(--primary); }
+        .badge-pending { background: var(--danger-light); color: var(--danger); }
+        .badge-msi { background: var(--accent-light); color: var(--accent); }
+        .badge-recurrente { background: #f3e5f5; color: #7b1fa2; }
+        
+        .action-btn { background: none; color: var(--text-muted); font-size: 14px; }
+        .action-btn:hover { color: var(--danger); }
+
+        /* Filtro de historial */
+        .filter-section { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
+        .filter-section select { padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div id="lock-screen">
+    <div class="login-box">
+        <h2>Control de Tarjetas</h2>
+        <p style="font-size:12px; color:var(--text-muted)">Introduce la contraseña para ingresar</p>
+        <input type="password" id="pass-input" placeholder="Contraseña">
+        <button class="btn-primary" onclick="checkPassword()" style="width:100%">Entrar</button>
+        <p id="login-error" style="color:var(--danger); font-size:12px; margin-top:10px; display:none;">Contraseña incorrecta</p>
+    </div>
+</div>
+
+<div id="main-content">
+    <header>
+        <h1>Control Inteligente de Tarjetas</h1>
+        <p>Dynamic Dashboard para control de finanzas, conciliación familiar e historial.</p>
+    </header>
+
+    <div class="tabs-container">
+        <button class="tab-btn active" onclick="switchTab('dashboard-view')">📊 Mes Actual</button>
+        <button class="tab-btn" onclick="switchTab('history-view')">📚 Historial Acumulado</button>
+    </div>
+
+    <div id="dashboard-view" class="view-section active">
+        <div class="config-section">
+            <strong>⚙️ Personalizar Propietarios:</strong>
+            <label>P1: <input type="text" id="prop1" value="kike" onchange="updatePropNames()"></label>
+            <label>P2: <input type="text" id="prop2" value="isis" onchange="updatePropNames()"></label>
+            <label>P3: <input type="text" id="prop3" value="general" onchange="updatePropNames()"></label>
+        </div>
+
+        <div class="dashboard">
+            <div class="kpi-card">
+                <h3>Total Pendiente Mes</h3>
+                <div class="value pending" id="total-pendiente">$0.00</div>
+            </div>
+            <div class="kpi-card">
+                <h3 id="label-p1">Pendiente KIKE</h3>
+                <div class="value" id="pendiente-p1">$0.00</div>
+            </div>
+            <div class="kpi-card">
+                <h3 id="label-p2">Pendiente ISIS</h3>
+                <div class="value" id="pendiente-p2">$0.00</div>
+            </div>
+            <div class="kpi-card">
+                <h3 id="label-p3">Pendiente Compartido</h3>
+                <div class="value" id="pendiente-p3">$0.00</div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <form id="expense-form" onsubmit="addExpense(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Tarjeta</label>
+                        <select id="card" required>
+                            <option value="BANAMEX ORO">BANAMEX ORO</option>
+                            <option value="BANAMEX HOME DEPOT">BANAMEX HOME DEPOT</option>
+                            <option value="LIVERPOOL GRIS">LIVERPOOL GRIS</option>
+                            <option value="LIVERPOOL ROSA">LIVERPOOL ROSA</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="type">
+                            <option value="">Ordinario</option>
+                            <option value="MSI">MSI</option>
+                            <option value="Recurrente">Recurrente</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Concepto</label>
+                        <input type="text" id="concept" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Monto ($)</label>
+                        <input type="number" id="amount" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Propietario</label>
+                        <select id="name-select"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Límite de Pago</label>
+                        <input type="date" id="due-date" required>
+                    </div>
+                    <div>
+                        <button type="submit" class="btn-primary" style="width: 100%;">Agregar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px; align-items:center; flex-wrap:wrap; gap:10px;">
+            <h3>Movimientos del Mes</h3>
+            <div>
+                <button class="btn-secondary" onclick="clearAllPaid()">Limpiar Pagados</button>
+                <button class="btn-secondary" onclick="resetTable()">Reiniciar Todo</button>
+                <button class="btn-primary btn-next-month" onclick="advanceMonth()">🔄 Siguiente Mes</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:40px; text-align:center;">√</th>
+                        <th>Tarjeta</th>
+                        <th>Tipo</th>
+                        <th>Concepto</th>
+                        <th class="text-right">Monto</th>
+                        <th class="text-center">Responsable</th>
+                        <th class="text-center">Límite Pago</th>
+                        <th class="text-center">Estado</th>
+                        <th class="text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="history-view" class="view-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+            <div class="filter-section">
+                <strong>Filtrar por Mes Histórico:</strong>
+                <select id="history-month-filter" onchange="renderHistoryTable()">
+                    <option value="todos">-- Mostrar Todos --</option>
+                </select>
+            </div>
+            <button class="btn-secondary" style="color:var(--danger);" onclick="clearHistory()">⚠️ Borrar Todo el Historial</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mes Cerrado</th>
+                        <th>Tarjeta</th>
+                        <th>Tipo</th>
+                        <th>Concepto</th>
+                        <th class="text-right">Monto</th>
+                        <th class="text-center">Responsable</th>
+                        <th class="text-center">Límite Pago</th>
+                        <th class="text-center">Estado Final</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const CONFIG_PASSWORD = "1234"; 
+
+    let ownerNames = JSON.parse(localStorage.getItem('tarjetas_owners')) || ["kike", "isis", "general"];
+    let historyExpenses = JSON.parse(localStorage.getItem('tarjetas_history')) || [];
+    
+    let defaultExpenses = [
+        { card: "BANAMEX ORO", type: "MSI", concept: "Aspiradora limpia tapiceria 02:06", amount: 400.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "MSI", concept: "esterilizador de biberones 08:12", amount: 170.17, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "traje amazon pirata", amount: 558.82, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "gasolina servifacil", amount: 263.12, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "recarga isita", amount: 100.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "Recurrente", concept: "Icloud", amount: 17.00, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "MSI", concept: "Colchon Emma King 01:12", amount: 635.22, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "MSI", concept: "base para cama king 01:12", amount: 280.69, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "recarga movistar", amount: 100.00, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "gasolina la antigua", amount: 500.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "Recurrente", concept: "uber one", amount: 70.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats individual", amount: 6.95, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats", amount: 262.45, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats total", amount: 139.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats regular", amount: 206.54, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "Recurrente", concept: "amazon membresia", amount: 99.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats familiar", amount: 669.93, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "uber eats envio", amount: 6.20, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "Recurrente", concept: "google one", amount: 17.00, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "estacionamiento los angeles", amount: 28.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "estacionamiento plaza americas", amount: 25.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "iva comision administracion", amount: 196.80, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "comision administracion", amount: 1230.00, ownerIndex: 0, dueDate: "2026-06-03", paid: false },
+        { card: "BANAMEX ORO", type: "", concept: "paypal perfumes", amount: 1259.20, ownerIndex: 0, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX ORO", type: "", concept: "farmacias del ahorro", amount: 499.00, ownerIndex: 1, dueDate: "2026-06-03", paid: true },
+        { card: "BANAMEX HOME DEPOT", type: "MSI", concept: "robot aspirador 05:12", amount: 1499.92, ownerIndex: 1, dueDate: "2026-06-01", paid: true },
+        { card: "BANAMEX HOME DEPOT", type: "MSI", concept: "lavadora mama enrique 08:18", amount: 235.00, ownerIndex: 0, dueDate: "2026-06-01", paid: true },
+        { card: "BANAMEX HOME DEPOT", type: "MSI", concept: "galaxy s25 ultra 09:24", amount: 755.98, ownerIndex: 0, dueDate: "2026-06-01", paid: false },
+        { card: "BANAMEX HOME DEPOT", type: "", concept: "Recarga Telcel", amount: 100.00, ownerIndex: 0, dueDate: "2026-06-01", paid: false },
+        { card: "LIVERPOOL GRIS", type: "", concept: "termo", amount: 396.29, ownerIndex: 2, dueDate: "2026-05-29", paid: false },
+        { card: "LIVERPOOL ROSA", type: "", concept: "anualidad", amount: 289.42, ownerIndex: 2, dueDate: "2026-06-09", paid: false }
+    ];
+
+    let expenses = JSON.parse(localStorage.getItem('tarjetas_data')) || defaultExpenses;
+
+    function checkPassword() {
+        const input = document.getElementById('pass-input').value;
+        if(input === CONFIG_PASSWORD) {
+            document.getElementById('lock-screen').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            initApp();
+        } else {
+            document.getElementById('login-error').style.display = 'block';
+        }
+    }
+
+    document.getElementById('pass-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') checkPassword();
+    });
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+
+        if(tabId === 'history-view') {
+            updateHistoryFilterOptions();
+            renderHistoryTable();
+        }
+    }
+
+    function initApp() {
+        document.getElementById('prop1').value = ownerNames[0];
+        document.getElementById('prop2').value = ownerNames[1];
+        document.getElementById('prop3').value = ownerNames[2];
+        renderDropdowns();
+        renderTable();
+    }
+
+    function updatePropNames() {
+        ownerNames[0] = document.getElementById('prop1').value || "Prop 1";
+        ownerNames[1] = document.getElementById('prop2').value || "Prop 2";
+        ownerNames[2] = document.getElementById('prop3').value || "Compartido";
+        localStorage.setItem('tarjetas_owners', JSON.stringify(ownerNames));
+        renderDropdowns();
+        renderTable();
+    }
+
+    function renderDropdowns() {
+        const select = document.getElementById('name-select');
+        select.innerHTML = `
+            <option value="0">${ownerNames[0]}</option>
+            <option value="1">${ownerNames[1]}</option>
+            <option value="2">${ownerNames[2]}</option>
+        `;
+        document.getElementById('label-p1').innerText = `Pendiente ${ownerNames[0].toUpperCase()}`;
+        document.getElementById('label-p2').innerText = `Pendiente ${ownerNames[1].toUpperCase()}`;
+        document.getElementById('label-p3').innerText = `Pendiente ${ownerNames[2].toUpperCase()}`;
+    }
+
+    function formatCurrency(val) {
+        return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(val);
+    }
+
+    function formatDateDisplay(dateStr) {
+        if (!dateStr) return '-';
+        const p = dateStr.split('-');
+        if(p.length === 3) return `${p[2]}/${p[1]}/${p[0].slice(-2)}`;
+        return dateStr;
+    }
+
+    function updateDashboard() {
+        let totalPendiente = 0, p1 = 0, p2 = 0, p3 = 0;
+        expenses.forEach(exp => {
+            if (!exp.paid) {
+                totalPendiente += exp.amount;
+                if (exp.ownerIndex === 0) p1 += exp.amount;
+                if (exp.ownerIndex === 1) p2 += exp.amount;
+                if (exp.ownerIndex === 2) p3 += exp.amount;
+            }
+        });
+        document.getElementById('total-pendiente').innerText = formatCurrency(totalPendiente);
+        document.getElementById('pendiente-p1').innerText = formatCurrency(p1);
+        document.getElementById('pendiente-p2').innerText = formatCurrency(p2);
+        document.getElementById('pendiente-p3').innerText = formatCurrency(p3);
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('table-body');
+        tbody.innerHTML = '';
+
+        expenses.forEach((exp, index) => {
+            const tr = document.createElement('tr');
+            let badgeType = '-';
+            if (exp.type === 'MSI') badgeType = '<span class="badge badge-msi">MSI</span>';
+            if (exp.type === 'Recurrente') badgeType = '<span class="badge badge-recurrente">REC</span>';
+            
+            tr.innerHTML = `
+                <td class="text-center"><input type="checkbox" ${exp.paid ? 'checked' : ''} onchange="togglePaid(${index})"></td>
+                <td><strong>${exp.card}</strong></td>
+                <td class="text-center">${badgeType}</td>
+                <td style="${exp.paid ? 'text-decoration: line-through; color: var(--text-muted);':''}">${exp.concept}</td>
+                <td class="text-right" style="font-weight:bold;">${formatCurrency(exp.amount)}</td>
+                <td class="text-center" style="text-transform:capitalize;">${ownerNames[exp.ownerIndex] || 'S/N'}</td>
+                <td class="text-center" style="color:${!exp.paid?'var(--danger)':'inherit'}; font-weight:${!exp.paid?'600':'normal'};">${formatDateDisplay(exp.dueDate)}</td>
+                <td class="text-center"><span class="badge ${exp.paid ? 'badge-paid' : 'badge-pending'}">${exp.paid ? 'Pagado' : 'Pendiente'}</span></td>
+                <td class="text-center"><button class="action-btn" onclick="deleteExpense(${index})">✕</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        localStorage.setItem('tarjetas_data', JSON.stringify(expenses));
+        updateDashboard();
+    }
+
+    function togglePaid(index) { expenses[index].paid = !expenses[index].paid; renderTable(); }
+    function deleteExpense(index) { if(confirm('¿Eliminar registro?')) { expenses.splice(index, 1); renderTable(); } }
+    
+    function addExpense(e) {
+        e.preventDefault();
+        expenses.push({
+            card: document.getElementById('card').value,
+            type: document.getElementById('type').value,
+            concept: document.getElementById('concept').value,
+            amount: parseFloat(document.getElementById('amount').value),
+            ownerIndex: parseInt(document.getElementById('name-select').value),
+            dueDate: document.getElementById('due-date').value,
+            paid: false
+        });
+        renderTable();
+        document.getElementById('expense-form').reset();
+        renderDropdowns();
+    }
+
+    function clearAllPaid() { if(confirm('¿Borrar de la vista lo ya pagado?')) { expenses = expenses.filter(exp => !exp.paid); renderTable(); } }
+    function resetTable() { if(confirm('¿Vaciar toda la lista actual por completo?')) { expenses = []; renderTable(); } }
+
+    // HISTORIAL: Renders y filtros
+    function updateHistoryFilterOptions() {
+        const filter = document.getElementById('history-month-filter');
+        const uniqueMonths = [...new Set(historyExpenses.map(exp => exp.historyMonth))];
+        
+        filter.innerHTML = '<option value="todos">-- Mostrar Todos --</option>';
+        uniqueMonths.forEach(m => {
+            filter.innerHTML += `<option value="${m}">${m}</option>`;
+        });
+    }
+
+    function renderHistoryTable() {
+        const tbody = document.getElementById('history-table-body');
+        const filterValue = document.getElementById('history-month-filter').value;
+        tbody.innerHTML = '';
+
+        let filtered = historyExpenses;
+        if(filterValue !== 'todos') {
+            filtered = historyExpenses.filter(exp => exp.historyMonth === filterValue);
+        }
+
+        filtered.forEach(exp => {
+            const tr = document.createElement('tr');
+            let badgeType = '-';
+            if (exp.type === 'MSI') badgeType = '<span class="badge badge-msi">MSI</span>';
+            if (exp.type === 'Recurrente') badgeType = '<span class="badge badge-recurrente">REC</span>';
+
+            // AQUÍ LA CORRECCIÓN: Usa 'historyOwnerName' si ya existe, de lo contrario busca el índice actual como respaldo
+            let responsableName = exp.historyOwnerName || ownerNames[exp.ownerIndex] || 'S/N';
+
+            tr.innerHTML = `
+                <td><strong>${exp.historyMonth}</strong></td>
+                <td>${exp.card}</td>
+                <td class="text-center">${badgeType}</td>
+                <td>${exp.concept}</td>
+                <td class="text-right">${formatCurrency(exp.amount)}</td>
+                <td class="text-center" style="text-transform:capitalize; font-weight:bold;">${responsableName}</td>
+                <td class="text-center">${formatDateDisplay(exp.dueDate)}</td>
+                <td class="text-center"><span class="badge ${exp.paid ? 'badge-paid' : 'badge-pending'}">${exp.paid ? 'Pagado' : 'Pendiente'}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function clearHistory() {
+        if(confirm('¿Estás COMPLETAMENTE seguro de borrar todo el historial guardado de meses anteriores? Esta acción no se puede deshacer.')) {
+            historyExpenses = [];
+            localStorage.setItem('tarjetas_history', JSON.stringify(historyExpenses));
+            renderHistoryTable();
+            updateHistoryFilterOptions();
+        }
+    }
+
+    // AVANZAR DE MES GUARDANDO EN EL HISTORIAL
+    function advanceMonth() {
+        let currentMonthLabel = prompt("Ingresa el nombre del mes que estás cerrando (Ej: Mayo 2026):");
+        if (!currentMonthLabel || currentMonthLabel.trim() === "") {
+            alert("Operación cancelada. Debes asignar un nombre al mes para guardar su historial.");
+            return;
+        }
+
+        // 1. Guardar TODO lo actual en el historial antes de modificar nada
+        expenses.forEach(exp => {
+            let historyItem = { ...exp };
+            historyItem.historyMonth = currentMonthLabel.trim(); 
+            
+            // CORRECCIÓN CRÍTICA: Congelamos el nombre de texto actual del responsable para el historial
+            historyItem.historyOwnerName = ownerNames[exp.ownerIndex] || "Desconocido";
+            
+            historyExpenses.push(historyItem);
+        });
+        localStorage.setItem('tarjetas_history', JSON.stringify(historyExpenses));
+
+        // 2. Filtrar y preparar la lista para el siguiente mes
+        let nextMonthExpenses = [];
+
+        expenses.forEach(exp => {
+            if (exp.type === 'MSI' || exp.type === 'Recurrente') {
+                let updatedExp = { ...exp };
+                updatedExp.paid = false; // Regresa a pendiente
+
+                // Sumar un mes a la fecha límite
+                if (updatedExp.dueDate) {
+                    let d = new Date(updatedExp.dueDate + 'T00:00:00');
+                    d.setMonth(d.getMonth() + 1);
+                    
+                    let yyyy = d.getFullYear();
+                    let mm = String(d.getMonth() + 1).padStart(2, '0');
+                    let dd = String(d.getDate()).padStart(2, '0');
+                    updatedExp.dueDate = `${yyyy}-${mm}-${dd}`;
+                }
+                nextMonthExpenses.push(updatedExp);
+            }
+        });
+
+        expenses = nextMonthExpenses;
+        renderTable();
+        alert(`¡Perfecto! Todo se guardó en el historial bajo el nombre de "${currentMonthLabel}". Tu lista actual se limpió y los MSI y fijos se renovaron.`);
+    }
+</script>
+</body>
+</html>
