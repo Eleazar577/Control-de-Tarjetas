@@ -67,6 +67,7 @@
         .btn-secondary { background: #eceff1; color: var(--text-main); border: 1px solid var(--border-color); }
         .btn-next-month { background: #ff9800; color: white; margin-left: 10px; }
         .btn-next-month:hover { background: #e65100; }
+        .btn-edit-mode { background: #0288d1; color: white; }
 
         /* Tabla */
         .table-container { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-x: auto; margin-bottom: 20px; }
@@ -81,8 +82,9 @@
         .badge-msi { background: var(--accent-light); color: var(--accent); }
         .badge-recurrente { background: #f3e5f5; color: #7b1fa2; }
         
-        .action-btn { background: none; color: var(--text-muted); font-size: 14px; }
+        .action-btn { background: none; color: var(--text-muted); font-size: 14px; margin: 0 5px; }
         .action-btn:hover { color: var(--danger); }
+        .action-btn.edit:hover { color: var(--accent); }
 
         /* Filtro de historial */
         .filter-section { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
@@ -176,7 +178,7 @@
                         <input type="date" id="due-date" required>
                     </div>
                     <div>
-                        <button type="submit" class="btn-primary" style="width: 100%;">Agregar</button>
+                        <button type="submit" id="submit-btn" class="btn-primary" style="width: 100%;">Agregar</button>
                     </div>
                 </div>
             </form>
@@ -203,7 +205,7 @@
                         <th class="text-center">Responsable</th>
                         <th class="text-center">Límite Pago</th>
                         <th class="text-center">Estado</th>
-                        <th class="text-center">Acción</th>
+                        <th class="text-center">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="table-body"></tbody>
@@ -283,6 +285,7 @@
     ];
 
     let expenses = JSON.parse(localStorage.getItem('tarjetas_data')) || defaultExpenses;
+    let editIndex = null; // Guardará el índice de la fila que se está editando
 
     function checkPassword() {
         const input = document.getElementById('pass-input').value;
@@ -387,7 +390,10 @@
                 <td class="text-center" style="text-transform:capitalize;">${ownerNames[exp.ownerIndex] || 'S/N'}</td>
                 <td class="text-center" style="color:${!exp.paid?'var(--danger)':'inherit'}; font-weight:${!exp.paid?'600':'normal'};">${formatDateDisplay(exp.dueDate)}</td>
                 <td class="text-center"><span class="badge ${exp.paid ? 'badge-paid' : 'badge-pending'}">${exp.paid ? 'Pagado' : 'Pendiente'}</span></td>
-                <td class="text-center"><button class="action-btn" onclick="deleteExpense(${index})">✕</button></td>
+                <td class="text-center">
+                    <button class="action-btn edit" onclick="startEditExpense(${index})" title="Editar Movimiento">✏️</button>
+                    <button class="action-btn" onclick="deleteExpense(${index})" title="Eliminar Movimiento">✕</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -399,17 +405,55 @@
     function togglePaid(index) { expenses[index].paid = !expenses[index].paid; renderTable(); }
     function deleteExpense(index) { if(confirm('¿Eliminar registro?')) { expenses.splice(index, 1); renderTable(); } }
     
+    // FUNCIÓN DE EDICIÓN: Sube los datos al formulario para cambiarlos
+    function startEditExpense(index) {
+        editIndex = index;
+        const exp = expenses[index];
+
+        // Rellenar el formulario con los datos existentes
+        document.getElementById('card').value = exp.card;
+        document.getElementById('type').value = exp.type;
+        document.getElementById('concept').value = exp.concept;
+        document.getElementById('amount').value = exp.amount;
+        document.getElementById('name-select').value = exp.ownerIndex;
+        document.getElementById('due-date').value = exp.dueDate;
+
+        // Modificar el estilo del botón de enviar
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.innerText = "💾 Actualizar Registro";
+        submitBtn.className = "btn-edit-mode";
+        
+        // Hacer scroll suave hacia el formulario para comodidad visual
+        document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
+    }
+
     function addExpense(e) {
         e.preventDefault();
-        expenses.push({
+        
+        const newData = {
             card: document.getElementById('card').value,
             type: document.getElementById('type').value,
             concept: document.getElementById('concept').value,
             amount: parseFloat(document.getElementById('amount').value),
             ownerIndex: parseInt(document.getElementById('name-select').value),
             dueDate: document.getElementById('due-date').value,
-            paid: false
-        });
+            paid: editIndex !== null ? expenses[editIndex].paid : false // Conserva el estado de pago si se edita
+        };
+
+        if (editIndex !== null) {
+            // Reemplazar en la misma posición si venimos de una edición
+            expenses[editIndex] = newData;
+            editIndex = null;
+            
+            // Reestablecer botón a estado normal
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.innerText = "Agregar";
+            submitBtn.className = "btn-primary";
+        } else {
+            // Agregar uno nuevo normalmente
+            expenses.push(newData);
+        }
+
         renderTable();
         document.getElementById('expense-form').reset();
         renderDropdowns();
@@ -445,7 +489,6 @@
             if (exp.type === 'MSI') badgeType = '<span class="badge badge-msi">MSI</span>';
             if (exp.type === 'Recurrente') badgeType = '<span class="badge badge-recurrente">REC</span>';
 
-            // AQUÍ LA CORRECCIÓN: Usa 'historyOwnerName' si ya existe, de lo contrario busca el índice actual como respaldo
             let responsableName = exp.historyOwnerName || ownerNames[exp.ownerIndex] || 'S/N';
 
             tr.innerHTML = `
@@ -479,27 +522,21 @@
             return;
         }
 
-        // 1. Guardar TODO lo actual en el historial antes de modificar nada
         expenses.forEach(exp => {
             let historyItem = { ...exp };
             historyItem.historyMonth = currentMonthLabel.trim(); 
-            
-            // CORRECCIÓN CRÍTICA: Congelamos el nombre de texto actual del responsable para el historial
             historyItem.historyOwnerName = ownerNames[exp.ownerIndex] || "Desconocido";
-            
             historyExpenses.push(historyItem);
         });
         localStorage.setItem('tarjetas_history', JSON.stringify(historyExpenses));
 
-        // 2. Filtrar y preparar la lista para el siguiente mes
         let nextMonthExpenses = [];
 
         expenses.forEach(exp => {
             if (exp.type === 'MSI' || exp.type === 'Recurrente') {
                 let updatedExp = { ...exp };
-                updatedExp.paid = false; // Regresa a pendiente
+                updatedExp.paid = false; 
 
-                // Sumar un mes a la fecha límite
                 if (updatedExp.dueDate) {
                     let d = new Date(updatedExp.dueDate + 'T00:00:00');
                     d.setMonth(d.getMonth() + 1);
